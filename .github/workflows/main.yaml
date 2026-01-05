@@ -57,14 +57,12 @@ jobs:
       - name: Upload Artifact to Nexus
         run: mvn deploy -DaltDeploymentRepository=nexus::default::${{ secrets.NEXUS_REPO_URL }}
 
-     - name: Configure AWS
+      - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-
-        
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -158,4 +156,5 @@ jobs:
           echo "Deploying WAR file..."
           curl -v -u "$USER:$PASS" --fail --show-error -T "$WAR_FILE" \
             "$URL/deploy?path=/train-ticket-reservation&update=true"
+
 
