@@ -1,67 +1,45 @@
-name: CI-CD | Train Ticket Reservation
+name: Build and Deploy train-ticket-reservation
 
 on:
   push:
     branches:
-      - main
+      - master
   workflow_dispatch:
 
-env:
-  APP_NAME: train-ticket-reservation
-  JAVA_VERSION: '17'
-
 jobs:
-# =====================================================
-# 1. BUILD, TEST, SCAN & PACKAGE
-# =====================================================
   build:
-    name: Build & Scan
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout source
+      - name:  Checkout code
         uses: actions/checkout@v4
 
-      - name: ☕ Setup Java
+      - name:  Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          java-version: '17'
 
-      - name: 🔨 Build with Maven
-        run: mvn clean verify
+      - name:  Build with Maven
+        run: mvn clean package -DskipTests
 
-      - name: 🔍 SonarQube Analysis
-        run: |
-          mvn sonar:sonar \
-            -Dsonar.projectKey=${{ env.APP_NAME }} \
-            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+      - name:  Find WAR file
+        run: echo "WAR_FILE=$(ls target/*.war | head -n 1)" >> $GITHUB_ENV
 
-      - name: 📦 Upload WAR artifact
+      - name:  Upload WAR artifact
         uses: actions/upload-artifact@v4
         with:
           name: war-file
-          path: target/*.war
+          path: ${{ env.WAR_FILE }}
 
-# =====================================================
-# 2. PUSH ARTIFACT TO NEXUS
-# =====================================================
-  nexus:
-    name: Upload to Nexus
-    needs: build
-    runs-on: ubuntu-latest
+      - name: SonarQube Analysis
+        run: |
+         mvn sonar:sonar \
+         -Dsonar.projectKey=train-ticket-reservation \
+         -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
+         -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: ☕ Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
-
-      - name: 🔐 Configure Maven settings.xml
+      - name: Configure Maven settings.xml for Nexus
         run: |
           mkdir -p ~/.m2
           cat <<EOF > ~/.m2/settings.xml
@@ -76,56 +54,44 @@ jobs:
           </settings>
           EOF
 
-      - name: 🚀 Deploy to Nexus
-        run: mvn deploy -DskipTests
+      - name: Upload Artifact to Nexus
+        run: mvn deploy -DaltDeploymentRepository=nexus::default::${{ secrets.NEXUS_REPO_URL }}
 
-# =====================================================
-# 3. BUILD DOCKER IMAGE, SCAN & PUSH TO ECR
-# =====================================================
-  docker:
-    name: Docker Build & Push
-    needs: nexus
+     
+      
+    
+  deploy-dev:
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: 🔐 Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/download-artifact@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          name: war-file
 
-      - name: 🔑 Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: 🐳 Build Docker Image
+      - name:  Deploy to DEV
+        env:
+          URL: ${{ secrets.TOMCAT_URL_DEV }}
+          USER: ${{ secrets.TOMCAT_USER_DEV }}
+          PASS: ${{ secrets.TOMCAT_PASS_DEV }}
         run: |
-          IMAGE_TAG=${{ github.run_number }}
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-          docker build -t ${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG .
+          WAR_FILE=$(ls *.war | head -n 1)
+          echo "Deploying $WAR_FILE to DEV ($URL)"
 
-      - name: 🔍 Trivy Image Scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: image
-          image-ref: ${{ secrets.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
+          echo "Checking Tomcat Manager access..."
+          curl -v -u "$USER:$PASS" "$URL/list"
 
-      - name: 📤 Push Image to ECR
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          docker tag ${{ secrets.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} \
-            $ACCOUNT_ID.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-
-          docker push $ACCOUNT_ID.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          echo "Deploying WAR file..."
+          curl -v -u "$USER:$PASS" --fail --show-error -T "$WAR_FILE" \
+            "$URL/deploy?path=/train-ticket-reservation&update=true"
 
 
 
-      -
 
-# =====================================================
-# 5. DEPLOY TO TOMCAT (DEV)
-# ==========
+
+
+
+
+
+
+
