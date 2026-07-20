@@ -92,4 +92,39 @@
 			<version>3.1.0</version>
 		</dependency>
 	</dependencies>
+
+	...
+    <dependencies>
+
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.3.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.28</version>
+        </dependency>
+
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>3.1.0</version>
+        </dependency>
+
+    </dependencies>
+
+    <distributionManagement>
+        <snapshotRepository>
+            <id>nexus</id>
+            <url>${env.NEXUS_SNAPSHOT_URL}</url>
+        </snapshotRepository>
+
+        <repository>
+            <id>nexus</id>
+            <url>${env.NEXUS_RELEASE_URL}</url>
+        </repository>
+    </distributionManagement>
 </project>
